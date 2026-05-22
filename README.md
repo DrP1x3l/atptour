@@ -1,93 +1,84 @@
-# ATP Tour v2
+# ATP Tour v2 — monolite
 
-Refactor completo dell'app personale di tracking partite. Da monolite HTML+Babel+Supabase
-a **frontend Vite/React/TS** + **backend Fastify/TS** + **Postgres locale** sul Lonaserver.
+App personale per tracciare partite tennis. **Un solo container, un solo processo Node**:
+il server Fastify serve sia le API sia il bundle React buildato. Niente nginx,
+niente container separati.
 
-Single-user (Ricky), shared-secret in header, dark-mode mobile-first, PWA installabile.
+- **Single-user** (Ricky), shared-secret in header.
+- **Mobile-first**, dark mode, PWA installabile.
+- **Postgres condiviso** col resto dello stack del Lonaserver.
 
 ## Struttura
 
 ```
-atptour-v2/
-├── web/         # Vite + React + TS + Tailwind, build statica servita da Nginx
-├── api/         # Fastify + TS + Drizzle ORM, parla con Postgres del Lonaserver
-├── scripts/     # Migrazione one-shot dal blob Supabase
-├── docker-compose.yml
+atptour/
+├── api/         # Fastify + TS + Drizzle ORM. Serve /api/*, /healthz E i file statici della SPA.
+├── web/         # Vite + React + TS + Tailwind. Compilato in static, copiato in /app/public dentro il container.
+├── scripts/     # Migrazione one-shot dal blob Supabase (storico)
+├── Dockerfile          # Unico, multi-stage: web build + api build + runtime
+├── docker-compose.yml  # Un solo servizio "app"
 └── .env.example
 ```
 
-## Quick start (dev locale sul tuo Mac)
+## Quick start (dev locale sul Mac)
 
 ```bash
 cp .env.example .env
-# edita .env e metti un APP_SECRET serio
+# - APP_SECRET / VITE_APP_SECRET: stesso valore (openssl rand -hex 32)
+# - DATABASE_URL: punta al tuo postgres dev
 
-# avvia tutto (web + api, attaccati al postgres del Lonaserver)
+# Avvia (build + run)
 docker compose up -d --build
 
-# web -> http://localhost:3011
-# api -> http://localhost:3012/healthz
+# App -> http://localhost:3018
+# healthz -> http://localhost:3018/healthz
 ```
+
+In dev senza Postgres del Lonaserver: decommenta il servizio `postgres` nel
+`docker-compose.yml` e cambia `networks.lonaserver` da `external: true` a `driver: bridge`.
 
 ## Deploy sul Lonaserver
 
-Già pensato per il tuo stack OrbStack:
+Vedi `DEPLOY.md`. Sintesi:
 
-1. **Database**: crea schema `atptour` dentro `server-postgres` (vedi `api/migrations`).
-2. **Rete**: i container `atptour-web` e `atptour-api` si attaccano alla rete dove gira
-   `server-postgres` (modifica `networks.lonaserver.name` in `docker-compose.yml` con
-   il nome reale della rete — vedi `docker network ls`).
-3. **Porte**: web su `3011`, api su `3012` (entrambe libere nella tua mappa).
-4. **Cloudflare Tunnel**: aggiungi una route `atptour.<tuodominio>` → `http://localhost:3011`.
-   L'API è raggiungibile dal web tramite `/api/*` via reverse proxy Nginx interno (vedi `web/nginx.conf`).
+1. Database: schema `atptour` dentro `server-postgres` (utente `atptour`).
+2. Rete: il container `atptour` si attacca a `server_default` (dove vivono `server-postgres` e `server-redis`).
+3. Porta host: `3018` (configurabile via `HOST_PORT` in `.env`).
+4. Cloudflare Tunnel: route verso `atptour:3000` (interno alla rete docker) oppure verso `127.0.0.1:3018` dell'host.
 
-Il dettaglio passo-passo è in `DEPLOY.md`.
-
-## Migrazione dati da Supabase
-
-```bash
-cd scripts
-npm install
-SUPA_URL=... SUPA_KEY=... DATABASE_URL=... npm run migrate
-```
-
-Lo script pulla il blob da Supabase e lo splatta nelle tabelle normalizzate.
-È idempotente: se rilanciato, salta i match già importati per `id`.
-
-## Stack tecnico
+## Stack
 
 | Layer | Tech |
 |---|---|
-| Frontend | React 18, Vite 5, TypeScript, Tailwind CSS, Zustand, Framer Motion |
-| Backend | Node 20, Fastify 4, TypeScript, Drizzle ORM, Zod |
-| Database | PostgreSQL 16 (riusa `server-postgres` esistente) |
-| Cache | Redis 7 (riusa `server-redis`, DB 1) — solo se serve |
+| Server unico | Node 20 + Fastify 4 + TypeScript |
+| Static SPA | @fastify/static + SPA fallback su `index.html` |
+| Compressione | @fastify/compress (br + gzip) |
+| ORM | Drizzle ORM su PostgreSQL 16 |
+| Frontend | React 18 + Vite 5 + Tailwind + Zustand + Framer Motion |
+| PWA | vite-plugin-pwa (workbox, service worker) |
 | Auth | Shared secret in header `X-API-Key` |
-| Build | Docker multi-stage, Nginx Alpine per il web |
+| Build | Docker multi-stage |
 | Deploy | OrbStack + Cloudflare Tunnel |
-
-## Roadmap implementata
-
-- [x] Refactor architetturale (Fase A): build proper, niente Babel runtime
-- [x] Backend proprio (Fase B): Postgres normalizzato, Supabase smontato
-- [x] UX/UI mobile curata (Fase C): bottom-sheet, swipe, haptic, PWA, skeleton
-- [x] Containerizzazione Docker per il Lonaserver
 
 ## Comandi utili
 
 ```bash
-# logs live
-docker compose logs -f web api
+docker compose logs -f                       # logs live
+docker compose up -d --build                 # rebuild + restart
+docker compose exec app sh                   # shell nel container
+docker compose down                          # stop
 
-# rebuild solo del web
-docker compose up -d --build web
-
-# entra nel container api
-docker compose exec api sh
-
-# genera nuova migrazione drizzle
-cd api && npm run db:generate
-
-# applica migrazioni al db
-cd api && npm run db:migrate
+# Typecheck locale (richiede npm install)
+cd api && npm install && npm run lint
+cd web && npm install && npm run lint
 ```
+
+## Note di architettura
+
+- `api/src/index.ts` registra in ordine: helmet → cors → compress → rateLimit → `/healthz` → `/api/*` (con auth) → `staticPlugin`.
+- `staticPlugin` (`api/src/plugins/static.ts`) replica il vecchio `nginx.conf`:
+  - `/assets/*` → `Cache-Control: public, max-age=31536000, immutable`
+  - `sw.js`, `registerSW.js`, `manifest.webmanifest`, `workbox-*.js` → `no-cache, no-store, must-revalidate`
+  - tutto il resto → `Cache-Control: no-cache`
+  - GET non-API non-asset → `setNotFoundHandler` ritorna `index.html` (SPA fallback)
+  - 404 su `/api/...` → JSON, mai HTML
