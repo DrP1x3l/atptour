@@ -30,11 +30,11 @@ services:
     networks:
       - lonaserver
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:3012/healthz"]
+      test: ["CMD", "node", "-e", "require('http').get('http://127.0.0.1:3012/healthz',r=>process.exit(r.statusCode<500?0:1)).on('error',()=>process.exit(1))"]
       interval: 30s
-      timeout: 3s
+      timeout: 5s
       retries: 5
-      start_period: 10s
+      start_period: 15s
 
   web:
     build:
@@ -53,7 +53,7 @@ services:
     networks:
       - lonaserver
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost/"]
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/"]
       interval: 30s
       timeout: 3s
       retries: 5
@@ -78,7 +78,7 @@ networks:
     # In prod: rete dove vivono server-postgres e server-redis.
     # Cambia il nome dopo `docker network ls`.
     external: true
-    name: lonaserver
+    name: server_default
 
 # volumes:
 #   atptour_pg_dev:

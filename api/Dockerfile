@@ -24,9 +24,9 @@ RUN npm ci --omit=dev
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/migrations ./migrations
 
-# Healthcheck con wget (incluso in alpine via busybox)
-HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=5 \
-  CMD wget -qO- http://localhost:3012/healthz || exit 1
+# Healthcheck via node (sempre disponibile)
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=5 \
+  CMD node -e "require('http').get('http://127.0.0.1:3012/healthz',r=>process.exit(r.statusCode<500?0:1)).on('error',()=>process.exit(1))"
 
 EXPOSE 3012
 USER node
