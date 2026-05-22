@@ -1,0 +1,49 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html, body, #root {
+    @apply h-full bg-bg text-text;
+    font-family: theme(fontFamily.sans);
+  }
+  body {
+    overflow-x: hidden;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    overscroll-behavior-y: none;
+  }
+  button {
+    @apply select-none;
+    -webkit-touch-callout: none;
+  }
+  input, button, textarea, select {
+    font: inherit;
+    color: inherit;
+  }
+  /* Disabilita lo zoom su iOS quando l'input ha font-size < 16 */
+  input, textarea, select {
+    font-size: 16px;
+  }
+}
+
+@layer components {
+  .squircle {
+    @apply rounded-[20px] bg-card border border-border;
+  }
+  .squircle-2 {
+    @apply rounded-[20px] bg-card2 border border-border2;
+  }
+  .safe-top { padding-top: env(safe-area-inset-top); }
+  .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
+  .glow-gold {
+    box-shadow: 0 0 24px rgba(212, 168, 67, 0.25);
+  }
+  .text-mono { font-family: theme(fontFamily.mono); }
+}
+
+/* Scrollbar discreta */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-thumb { background: theme(colors.border); border-radius: 3px; }
+::-webkit-scrollbar-track { background: transparent; }

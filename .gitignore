@@ -1,0 +1,29 @@
+node_modules/
+dist/
+build/
+.env
+.env.local
+.env.*.local
+*.log
+npm-debug.log*
+.DS_Store
+.vscode/
+.idea/
+coverage/
+.cache/
+.parcel-cache/
+.next/
+.turbo/
+.vite/
+
+# Artefatti TypeScript/Vite generati durante typecheck e build
+*.tsbuildinfo
+web/vite.config.js
+web/vite.config.d.ts
+web/vite.config.*.timestamp-*.mjs
+vite.config.ts.timestamp-*
+.drizzle/
+
+# Lock di package manager non-npm (lasciamo solo package-lock.json)
+yarn.lock
+pnpm-lock.yaml
