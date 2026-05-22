@@ -1,64 +1,49 @@
-# docker-compose per ATP Tour v2
+# docker-compose per ATP Tour v2 - monolite (un solo container, un solo processo Node).
 #
 # Si aggancia ai container di infrastruttura del Lonaserver (server-postgres,
-# server-redis) tramite una rete esterna già esistente.
+# server-redis) tramite la rete esterna esistente "server_default".
 #
-# IMPORTANTE: il nome della rete esterna ("lonaserver") va sostituito con quello
-# REALE in cui girano server-postgres/server-redis. Per scoprirlo:
-#   docker network ls
-#   docker inspect server-postgres | grep -A1 Networks
-#
-# In dev locale, basta cambiare la rete da "external: true" a "driver: bridge"
-# e aggiungere un servizio postgres locale (commentato sotto).
+# In dev locale, decommenta il servizio postgres e cambia networks.lonaserver
+# da `external: true` a `driver: bridge`.
 
 services:
-  api:
+  app:
     build:
-      context: ./api
+      context: .
       dockerfile: Dockerfile
-    container_name: atptour-api
+      args:
+        VITE_API_BASE: ${VITE_API_BASE:-/api}
+        VITE_APP_SECRET: ${VITE_APP_SECRET}
+    container_name: atptour
     restart: unless-stopped
     environment:
       NODE_ENV: ${NODE_ENV:-production}
-      PORT: ${API_PORT:-3012}
+      PORT: 3000
       DATABASE_URL: ${DATABASE_URL}
       APP_SECRET: ${APP_SECRET}
       CORS_ORIGIN: ${CORS_ORIGIN:-*}
       REDIS_URL: ${REDIS_URL:-}
+      PUBLIC_DIR: /app/public
     ports:
-      - "127.0.0.1:${API_PORT:-3012}:3012"
+      # Unica porta esposta: solo localhost. Il Cloudflare Tunnel deve puntare
+      # a questa porta host (oppure direttamente a "atptour:3000" via rete).
+      - "127.0.0.1:${HOST_PORT:-3018}:3000"
     networks:
       - lonaserver
     healthcheck:
-      test: ["CMD", "node", "-e", "require('http').get('http://127.0.0.1:3012/healthz',r=>process.exit(r.statusCode<500?0:1)).on('error',()=>process.exit(1))"]
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "require('http').get('http://127.0.0.1:3000/healthz',r=>process.exit(r.statusCode<500?0:1)).on('error',()=>process.exit(1))",
+        ]
       interval: 30s
       timeout: 5s
       retries: 5
-      start_period: 15s
+      start_period: 20s
 
-  web:
-    build:
-      context: ./web
-      dockerfile: Dockerfile
-      args:
-        VITE_APP_SECRET: ${VITE_APP_SECRET}
-        VITE_API_BASE: ${VITE_API_BASE:-/api}
-    container_name: atptour-web
-    restart: unless-stopped
-    ports:
-      - "127.0.0.1:${WEB_PORT:-3011}:80"
-    depends_on:
-      api:
-        condition: service_healthy
-    networks:
-      - lonaserver
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/"]
-      interval: 30s
-      timeout: 3s
-      retries: 5
-
-  # ---- Servizi locali di sviluppo (decommenta solo in dev) ----
+  # ---- Postgres di sviluppo locale (decommenta SOLO in dev) ----
   # postgres:
   #   image: postgres:16-alpine
   #   container_name: atptour-pg-dev
@@ -75,8 +60,8 @@ services:
 
 networks:
   lonaserver:
-    # In prod: rete dove vivono server-postgres e server-redis.
-    # Cambia il nome dopo `docker network ls`.
+    # Rete OrbStack del Lonaserver dove vivono server-postgres e server-redis.
+    # In dev locale: rimuovi "external: true / name:" e metti "driver: bridge".
     external: true
     name: server_default
 
